@@ -35,6 +35,8 @@ button{-webkit-appearance:none;appearance:none;border:none;cursor:pointer;font-f
   background:#fff;border-radius:16px 16px 0 0;
   box-shadow:0 -4px 20px rgba(0,0,0,.2);
   z-index:1000;max-height:70vh;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
   padding-bottom:env(safe-area-inset-bottom,0);
   display:none;
 }
@@ -327,16 +329,32 @@ function show(id){
 }
 
 // ── DROPDOWN ──
+// 用 touchstart/touchend 偵測是否為捲動，避免 iPhone 觸碰即選定
+function addTapHandler(el, callback){
+  let startY = 0;
+  el.addEventListener('touchstart', function(e){
+    startY = e.touches[0].clientY;
+  }, {passive: true});
+  el.addEventListener('touchend', function(e){
+    const dy = Math.abs(e.changedTouches[0].clientY - startY);
+    if(dy < 10){ // 移動小於 10px 才視為點擊
+      e.preventDefault();
+      callback();
+    }
+  });
+  // 桌機保留 click 事件
+  el.addEventListener('click', function(e){
+    if(!('ontouchstart' in window)) callback();
+  });
+}
+
 function buildDropdown(){
   const cont = $('dropdown-items');
   // "all" option
   let btn = document.createElement('button');
   btn.className = 'dropdown-item' + (selCat==='all'?' selected':'');
   btn.textContent = '【全部題庫】（3,564 題）';
-  btn.addEventListener('pointerdown', function(e){
-    e.preventDefault();
-    selectCat('all', this.textContent);
-  });
+  addTapHandler(btn, function(){ selectCat('all', btn.textContent); });
   cont.appendChild(btn);
   // each category
   CATS.forEach(cat=>{
@@ -344,10 +362,7 @@ function buildDropdown(){
     const btn2 = document.createElement('button');
     btn2.className = 'dropdown-item' + (selCat===cat?' selected':'');
     btn2.textContent = cat + '（'+ s.total +' 題）';
-    btn2.addEventListener('pointerdown', function(e){
-      e.preventDefault();
-      selectCat(cat, this.textContent);
-    });
+    addTapHandler(btn2, function(){ selectCat(cat, btn2.textContent); });
     cont.appendChild(btn2);
   });
 }
