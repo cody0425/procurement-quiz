@@ -189,6 +189,32 @@ button{-webkit-appearance:none;appearance:none;border:none;cursor:pointer;font-f
 .wi-stem{color:#2d3748;white-space:pre-wrap;margin-bottom:3px;}
 .wi-ans{color:#276749;font-weight:bold;}
 .wi-law{color:#a0aec0;font-size:12px;}
+
+/* ── MEMORY PANEL ── */
+.mem-card{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.1);padding:16px;margin-bottom:14px;}
+.mem-card .card-label{color:#2d3748;font-size:15px;font-weight:bold;margin-bottom:10px;border-left:4px solid #9f7aea;padding-left:10px;}
+.mem-stats{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
+.mem-stat{flex:1;min-width:90px;background:#f7f0ff;border-radius:8px;padding:10px;text-align:center;}
+.mem-stat-num{font-size:20px;font-weight:bold;color:#6b46c1;}
+.mem-stat-lbl{font-size:11px;color:#805ad5;margin-top:2px;}
+.mem-bar-wrap{height:8px;background:#e9d8fd;border-radius:4px;margin-bottom:8px;overflow:hidden;}
+.mem-bar{height:8px;background:#6b46c1;border-radius:4px;transition:width .4s;}
+.mem-pct-txt{font-size:12px;color:#6b46c1;text-align:right;margin-bottom:10px;}
+.btn-mem-clear{
+  width:100%;padding:10px;background:#fff5f5;color:#c53030;
+  border:1.5px solid #fc8181;border-radius:8px;
+  font-size:14px;font-family:inherit;cursor:pointer;
+}
+.btn-mem-clear:active{background:#fed7d7;}
+.mem-mode-row{display:flex;gap:8px;margin-bottom:10px;}
+.mem-mode-btn{
+  flex:1;padding:9px 6px;border:1.5px solid #cbd5e0;border-radius:8px;
+  background:#fff;color:#4a5568;font-size:13px;
+  font-family:inherit;text-align:center;cursor:pointer;transition:all .15s;
+}
+.mem-mode-btn.on{background:#6b46c1;color:#fff;border-color:#6b46c1;}
+.mem-mode-btn:active{opacity:.8;}
+.mem-hint{font-size:12px;color:#718096;text-align:center;margin-top:4px;}
 </style>
 </head>
 <body>
@@ -233,6 +259,26 @@ button{-webkit-appearance:none;appearance:none;border:none;cursor:pointer;font-f
         <button class="tog-btn" data-v="0">全部</button>
       </div>
     </div>
+  </div>
+
+
+  <!-- Memory Panel -->
+  <div class="mem-card">
+    <div class="card-label">📊 智慧抽題記憶</div>
+    <div class="mem-stats">
+      <div class="mem-stat"><div class="mem-stat-num" id="mem-done">0</div><div class="mem-stat-lbl">已出題數</div></div>
+      <div class="mem-stat"><div class="mem-stat-num" id="mem-total">3564</div><div class="mem-stat-lbl">題庫總題數</div></div>
+      <div class="mem-stat"><div class="mem-stat-num" id="mem-remain">3564</div><div class="mem-stat-lbl">未出過題數</div></div>
+    </div>
+    <div class="mem-bar-wrap"><div class="mem-bar" id="mem-bar" style="width:0%"></div></div>
+    <div class="mem-pct-txt" id="mem-pct">已涵蓋 0% 題庫</div>
+    <div style="font-size:13px;color:#4a5568;margin-bottom:6px;">抽題模式</div>
+    <div class="mem-mode-row" id="mem-mode-btns">
+      <button class="mem-mode-btn on" data-m="smart">🧠 智慧優先（未出過優先）</button>
+      <button class="mem-mode-btn" data-m="random">🎲 純隨機</button>
+    </div>
+    <div class="mem-hint" id="mem-hint">優先抽取未曾出現的題目，出完後再循環</div>
+    <button class="btn-mem-clear" id="btn-mem-clear">🗑️ 清除出題記憶（重頭開始）</button>
   </div>
 
   <button class="btn-start" id="btn-start">開始測驗 ▶</button>
@@ -308,6 +354,89 @@ let correct   = 0;
 let wrongs    = [];
 let answered  = false;
 let retryMode = false;
+
+// ── MEMORY SYSTEM ──
+const MEM_KEY = 'quiz_seen_ids';
+const MEM_MODE_KEY = 'quiz_mem_mode';
+let memMode = localStorage.getItem(MEM_MODE_KEY) || 'smart';
+
+function getSeenIds(){
+  try{ return new Set(JSON.parse(localStorage.getItem(MEM_KEY)||'[]')); }
+  catch(e){ return new Set(); }
+}
+function saveSeenIds(set){
+  try{ localStorage.setItem(MEM_KEY, JSON.stringify([...set])); } catch(e){}
+}
+function addSeenIds(qs){
+  const seen = getSeenIds();
+  qs.forEach(q=> seen.add(makeQid(q)));
+  saveSeenIds(seen);
+}
+function makeQid(q){
+  // 用 law + stem 前30字 當唯一 key
+  return (q.law||'') + '|' + (q.stem||'').slice(0,30);
+}
+function updateMemUI(pool){
+  const seen = getSeenIds();
+  const total = ALL_Q.length;
+  const done = seen.size;
+  const remain = total - done;
+  const pct = total>0 ? Math.round(done/total*100) : 0;
+  const domDone = document.getElementById('mem-done');
+  const domTotal = document.getElementById('mem-total');
+  const domRemain = document.getElementById('mem-remain');
+  const domBar = document.getElementById('mem-bar');
+  const domPct = document.getElementById('mem-pct');
+  if(domDone) domDone.textContent = done;
+  if(domTotal) domTotal.textContent = total;
+  if(domRemain) domRemain.textContent = Math.max(0, remain);
+  if(domBar) domBar.style.width = pct + '%';
+  if(domPct) domPct.textContent = '已涵蓋 ' + pct + '% 題庫';
+}
+function smartPick(pool, count){
+  const seen = getSeenIds();
+  // 分成未見過 / 見過兩組
+  const unseen = pool.filter(q => !seen.has(makeQid(q)));
+  const seen_pool = pool.filter(q => seen.has(makeQid(q)));
+  // 先洗牌
+  const u = shuffle(unseen);
+  const s = shuffle(seen_pool);
+  // 優先取未見過的
+  const combined = [...u, ...s];
+  return count === 0 ? combined : combined.slice(0, count);
+}
+
+// 初始化 memMode 按鈕
+document.addEventListener('DOMContentLoaded', function(){
+  updateMemUI();
+  // mem mode buttons
+  const modeBtns = document.querySelectorAll('#mem-mode-btns .mem-mode-btn');
+  modeBtns.forEach(btn => {
+    btn.classList.toggle('on', btn.dataset.m === memMode);
+    btn.addEventListener('pointerdown', function(e){
+      e.preventDefault();
+      memMode = this.dataset.m;
+      localStorage.setItem(MEM_MODE_KEY, memMode);
+      modeBtns.forEach(b => b.classList.remove('on'));
+      this.classList.add('on');
+      const hint = document.getElementById('mem-hint');
+      if(hint) hint.textContent = memMode==='smart'
+        ? '優先抽取未曾出現的題目，出完後再循環'
+        : '完全隨機，不考慮是否出現過';
+    });
+  });
+  // clear button
+  const clearBtn = document.getElementById('btn-mem-clear');
+  if(clearBtn) clearBtn.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    if(confirm('確定要清除所有出題記憶？\n下次抽題將重頭計算未出過的題目。')){
+      localStorage.removeItem(MEM_KEY);
+      updateMemUI();
+      alert('記憶已清除！');
+    }
+  });
+});
+
 
 // ── HELPERS ──
 function $(id){ return document.getElementById(id); }
@@ -433,8 +562,12 @@ function startQuiz(){
   let p = selCat==='all' ? [...ALL_Q] : ALL_Q.filter(q=>q.category===selCat);
   if(selType!=='all') p = p.filter(q=>q.type===selType);
   if(p.length===0){ alert('該條件下沒有題目，請重新選擇。'); return; }
-  p = shuffle(p);
-  pool = selCount===0 ? p : p.slice(0, selCount);
+  if(memMode === 'smart'){
+    pool = smartPick(p, selCount);
+  } else {
+    p = shuffle(p);
+    pool = selCount===0 ? p : p.slice(0, selCount);
+  }
   initQuiz();
 }
 function initQuiz(){
@@ -524,6 +657,8 @@ $('btn-abort').addEventListener('pointerdown', function(e){
 
 // ── RESULT ──
 function showResult(){
+  addSeenIds(pool);
+  updateMemUI();
   show('s-result');
   const tot = pool.length;
   const pct = Math.round(correct/tot*100);
