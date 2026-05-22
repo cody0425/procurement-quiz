@@ -215,6 +215,17 @@ button{-webkit-appearance:none;appearance:none;border:none;cursor:pointer;font-f
 .mem-mode-btn.on{background:#6b46c1;color:#fff;border-color:#6b46c1;}
 .mem-mode-btn:active{opacity:.8;}
 .mem-hint{font-size:12px;color:#718096;text-align:center;margin-top:4px;}
+
+/* ── USAGE COUNTER ── */
+.usage-bar{
+  display:flex;justify-content:center;align-items:center;gap:16px;
+  background:linear-gradient(135deg,#1a365d 0%,#2b6cb0 100%);
+  border-radius:10px;padding:10px 16px;margin-bottom:14px;
+}
+.usage-item{text-align:center;}
+.usage-num{font-size:22px;font-weight:bold;color:#fff;line-height:1.2;letter-spacing:1px;}
+.usage-lbl{font-size:11px;color:#bee3f8;margin-top:2px;}
+.usage-sep{width:1px;height:36px;background:rgba(255,255,255,.25);}
 </style>
 </head>
 <body>
@@ -282,6 +293,25 @@ button{-webkit-appearance:none;appearance:none;border:none;cursor:pointer;font-f
   </div>
 
   <button class="btn-start" id="btn-start">開始測驗 ▶</button>
+
+  <!-- Usage Counter (Footer) -->
+  <div class="usage-bar" style="margin-top:16px;margin-bottom:8px;">
+    <div class="usage-item">
+      <div class="usage-num" id="cnt-sessions">0</div>
+      <div class="usage-lbl">🏃 使用人次</div>
+    </div>
+    <div class="usage-sep"></div>
+    <div class="usage-item">
+      <div class="usage-num" id="cnt-questions">0</div>
+      <div class="usage-lbl">✏️ 累計作答題數</div>
+    </div>
+    <div class="usage-sep"></div>
+    <div class="usage-item">
+      <div class="usage-num" id="cnt-correct">0</div>
+      <div class="usage-lbl">✅ 累計答對題數</div>
+    </div>
+  </div>
+  <div style="text-align:center;font-size:11px;color:#a0aec0;padding-bottom:16px;">數據僅記錄於本裝置</div>
 </div>
 
 <!-- dropdown sheet -->
@@ -357,6 +387,31 @@ let retryMode = false;
 
 // ── MEMORY SYSTEM ──
 const MEM_KEY = 'quiz_seen_ids';
+
+// ── USAGE COUNTER ──
+const USAGE_KEY = 'quiz_usage';
+function getUsage(){
+  try{ return JSON.parse(localStorage.getItem(USAGE_KEY)||'{}'); }
+  catch(e){ return {}; }
+}
+function saveUsage(u){ try{ localStorage.setItem(USAGE_KEY, JSON.stringify(u)); }catch(e){} }
+function incUsage(field, delta){
+  const u = getUsage();
+  u[field] = (u[field]||0) + delta;
+  saveUsage(u);
+  return u[field];
+}
+function updateUsageUI(){
+  const u = getUsage();
+  const fmt = n => n>=10000 ? (n/10000).toFixed(1)+'萬' : (n||0).toLocaleString();
+  const el1 = document.getElementById('cnt-sessions');
+  const el2 = document.getElementById('cnt-questions');
+  const el3 = document.getElementById('cnt-correct');
+  if(el1) el1.textContent = fmt(u.sessions||0);
+  if(el2) el2.textContent = fmt(u.questions||0);
+  if(el3) el3.textContent = fmt(u.correct||0);
+}
+
 const MEM_MODE_KEY = 'quiz_mem_mode';
 let memMode = localStorage.getItem(MEM_MODE_KEY) || 'smart';
 
@@ -409,6 +464,7 @@ function smartPick(pool, count){
 // 初始化 memMode 按鈕
 document.addEventListener('DOMContentLoaded', function(){
   updateMemUI();
+  updateUsageUI();
   // mem mode buttons
   const modeBtns = document.querySelectorAll('#mem-mode-btns .mem-mode-btn');
   modeBtns.forEach(btn => {
@@ -559,6 +615,7 @@ $('btn-start').addEventListener('pointerdown', function(e){
 });
 function startQuiz(){
   retryMode = false;
+  incUsage('sessions',1); updateUsageUI();
   let p = selCat==='all' ? [...ALL_Q] : ALL_Q.filter(q=>q.category===selCat);
   if(selType!=='all') p = p.filter(q=>q.type===selType);
   if(p.length===0){ alert('該條件下沒有題目，請重新選擇。'); return; }
@@ -659,6 +716,9 @@ $('btn-abort').addEventListener('pointerdown', function(e){
 function showResult(){
   addSeenIds(pool);
   updateMemUI();
+  incUsage('questions', pool.length);
+  incUsage('correct', correct);
+  updateUsageUI();
   show('s-result');
   const tot = pool.length;
   const pct = Math.round(correct/tot*100);
