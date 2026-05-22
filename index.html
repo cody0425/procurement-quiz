@@ -226,6 +226,15 @@ button{-webkit-appearance:none;appearance:none;border:none;cursor:pointer;font-f
 .usage-num{font-size:22px;font-weight:bold;color:#fff;line-height:1.2;letter-spacing:1px;}
 .usage-lbl{font-size:11px;color:#bee3f8;margin-top:2px;}
 .usage-sep{width:1px;height:36px;background:rgba(255,255,255,.25);}
+
+/* PAGE HINT */
+.page-hint{
+  margin:0 10px 10px;padding:10px 14px;
+  background:#fffbeb;border:1px solid #f6d860;
+  border-radius:8px;font-size:13px;color:#7b5300;
+  line-height:1.7;display:none;
+}
+.page-hint strong{color:#b45309;}
 </style>
 </head>
 <body>
@@ -345,6 +354,7 @@ button{-webkit-appearance:none;appearance:none;border:none;cursor:pointer;font-f
     <div class="opts" id="opts"></div>
   </div>
   <div class="feedback" id="feedback"></div>
+  <div class="page-hint" id="page-hint"></div>
   <div class="quiz-foot">
     <button class="btn-next" id="btn-next">下一題 →</button>
   </div>
@@ -386,6 +396,7 @@ let answered  = false;
 let retryMode = false;
 
 // ── MEMORY SYSTEM ──
+const ARTICLE_PAGE = {"1": 2, "2": 2, "3": 2, "4": 5, "5": 5, "6": 5, "7": 6, "8": 6, "9": 6, "10": 6, "11": 7, "12": 7, "13": 9, "14": 9, "15": 10, "16": 10, "17": 10, "18": 11, "19": 11, "20": 11, "21": 11, "22": 12, "23": 14, "24": 14, "25": 14, "26": 15, "27": 15, "28": 16, "29": 16, "30": 16, "31": 17, "32": 17, "33": 17, "34": 18, "35": 19, "36": 19, "37": 20, "38": 21, "39": 21, "41": 21, "42": 22, "43": 22, "44": 23, "45": 23, "46": 25, "47": 25, "48": 26, "49": 27, "51": 28, "52": 29, "53": 31, "54": 32, "55": 33, "56": 33, "57": 33, "58": 34, "59": 35, "61": 35, "62": 36, "63": 37, "64": 37, "65": 37, "66": 37, "67": 37, "68": 38, "69": 38, "71": 38, "72": 40, "73": 41, "74": 42, "75": 42, "76": 44, "77": 44, "78": 45, "79": 45, "81": 45, "82": 45, "83": 45, "84": 45, "85": 46, "86": 47, "87": 47, "88": 48, "89": 48, "91": 48, "92": 49, "93": 49, "94": 49, "95": 49, "96": 49, "97": 50, "98": 50, "99": 50, "111": 55, "112": 55, "113": 55, "114": 55};
 const MEM_KEY = 'quiz_seen_ids';
 
 // ── USAGE COUNTER ──
@@ -664,6 +675,7 @@ function renderQ(){
 
   $('feedback').style.display = 'none';
   $('feedback').className = 'feedback';
+  const _ph = $('page-hint'); if(_ph) _ph.style.display='none';
   $('btn-next').style.display = 'none';
   answered = false;
 }
@@ -682,6 +694,8 @@ function pickAnswer(chosen){
   });
   const fb = $('feedback');
   fb.style.display = 'block';
+  const ph2 = $('page-hint');
+  if(ph2) ph2.style.display = 'none';
   if(isOk){
     correct++;
     fb.className = 'feedback ok';
@@ -692,6 +706,23 @@ function pickAnswer(chosen){
     const co = q.options[q.answer];
     fb.textContent = '✗ 答錯！正確答案：'+(q.type==='choice'?'('+( q.answer+1)+') ':'')+co+
       (q.law_ref?'（依據：'+q.law_ref+'）':'');
+    // 頁碼提示
+    const ph = $('page-hint');
+    if(ph){
+      const lawRef = q.law_ref || '';
+      const mNum = lawRef.match(/第\s*(\d+)\s*條/);
+      let pageNum = null;
+      if(mNum){ pageNum = ARTICLE_PAGE[mNum[1]]; }
+      if(pageNum){
+        ph.style.display = 'block';
+        ph.innerHTML = '📖 <strong>採購法令彙編</strong> 第 <strong>'+pageNum+'</strong> 頁　'+lawRef;
+      } else if(lawRef){
+        ph.style.display = 'block';
+        ph.innerHTML = '📖 條文依據：'+lawRef+'（彙編頁碼查詢中）';
+      } else {
+        ph.style.display = 'none';
+      }
+    }
   }
   const bn = $('btn-next');
   bn.style.display = 'inline-block';
