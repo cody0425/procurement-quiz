@@ -206,6 +206,32 @@ button{-webkit-appearance:none;appearance:none;border:none;cursor:pointer;font-f
   font-size:14px;font-family:inherit;cursor:pointer;
 }
 .btn-mem-clear:active{background:#fed7d7;}
+/* ── 錯題本 ── */
+.btn-wb-start{
+  display:block;width:100%;padding:12px;margin-bottom:8px;
+  background:#c53030;color:#fff;border:none;border-radius:10px;
+  font-size:15px;font-weight:bold;cursor:pointer;
+}
+.btn-wb-start:active{background:#9b2c2c;}
+.btn-wb-start:disabled{background:#e2e8f0;color:#a0aec0;cursor:default;}
+.wb-row{font-size:14px;color:#4a5568;margin-bottom:10px;}
+.wb-row strong{color:#c53030;font-size:18px;}
+/* ── 同步 ── */
+.sync-btn-row{display:flex;gap:8px;margin-bottom:8px;}
+.btn-sync{
+  flex:1;padding:10px 6px;background:#edf2f7;color:#2d3748;border:1px solid #cbd5e0;
+  border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;
+}
+.btn-sync:active{background:#e2e8f0;}
+.sync-toggle{
+  display:block;width:100%;padding:8px;background:none;border:none;color:#3182ce;
+  font-size:13px;cursor:pointer;text-align:center;
+}
+.sync-input{
+  display:block;width:100%;box-sizing:border-box;padding:9px 10px;margin-bottom:8px;
+  border:1px solid #cbd5e0;border-radius:8px;font-size:13px;
+}
+.sync-status{font-size:12px;color:#718096;text-align:center;min-height:16px;}
 .mem-mode-row{display:flex;gap:8px;margin-bottom:10px;}
 .mem-mode-btn{
   flex:1;padding:9px 6px;border:1.5px solid #cbd5e0;border-radius:8px;
@@ -293,15 +319,18 @@ button{-webkit-appearance:none;appearance:none;border:none;cursor:pointer;font-f
     <button class="btn-mem-clear" id="btn-mem-clear">🗑️ 清除出題記憶（重頭開始）</button>
   </div>
 
+  <!-- 錯題本 -->
+  <div class="mem-card">
+    <div class="card-label">📕 錯題本（永久記錄）</div>
+    <div class="wb-row">累計錯題：<strong id="wb-count">0</strong> 題（手動清除前永久保存）</div>
+    <button class="btn-wb-start" id="btn-wb-start">📝 開始錯題練習</button>
+    <button class="btn-mem-clear" id="btn-wb-clear">🗑️ 清除錯題本</button>
+  </div>
+
   <button class="btn-start" id="btn-start">開始測驗 ▶</button>
 
   <!-- Usage Counter (Footer) -->
   <div class="usage-bar" style="margin-top:16px;margin-bottom:8px;">
-    <div class="usage-item">
-      <div class="usage-num" id="cnt-sessions">0</div>
-      <div class="usage-lbl">🏃 使用人次</div>
-    </div>
-    <div class="usage-sep"></div>
     <div class="usage-item">
       <div class="usage-num" id="cnt-questions">0</div>
       <div class="usage-lbl">✏️ 累計作答題數</div>
@@ -312,7 +341,28 @@ button{-webkit-appearance:none;appearance:none;border:none;cursor:pointer;font-f
       <div class="usage-lbl">✅ 累計答對題數</div>
     </div>
   </div>
-  <div style="text-align:center;font-size:11px;color:#a0aec0;padding-bottom:16px;">數據僅記錄於本裝置</div>
+  <!-- 備份與同步 -->
+  <div class="mem-card">
+    <div class="card-label">💾 紀錄備份與跨裝置同步</div>
+    <div class="sync-btn-row">
+      <button class="btn-sync" id="btn-export">📤 匯出紀錄檔</button>
+      <button class="btn-sync" id="btn-import">📥 匯入紀錄檔</button>
+    </div>
+    <input type="file" id="import-file" accept=".json,application/json" style="display:none">
+    <button class="sync-toggle" id="sync-toggle">☁️ 雲端同步設定 ▾</button>
+    <div id="sync-panel" style="display:none">
+      <input class="sync-input" id="gas-url" placeholder="Google Apps Script 網址（https://script.google.com/...）">
+      <input class="sync-input" id="sync-code" placeholder="個人代碼（自訂英數字，例如 cody2026）">
+      <div class="sync-btn-row">
+        <button class="btn-sync" id="btn-sync-save">儲存設定</button>
+        <button class="btn-sync" id="btn-cloud-up">⬆ 上傳雲端</button>
+        <button class="btn-sync" id="btn-cloud-down">⬇ 下載合併</button>
+      </div>
+      <div class="sync-status" id="sync-status">尚未設定（部署方法見資料夾內「雲端同步設定說明」）</div>
+    </div>
+  </div>
+
+  <div style="text-align:center;font-size:11px;color:#a0aec0;padding-bottom:16px;">數據記錄於本裝置；可用上方「匯出 / 雲端同步」跨裝置保留紀錄</div>
 </div>
 
 <!-- dropdown sheet -->
@@ -385,6 +435,7 @@ let correct   = 0;
 let wrongs    = [];
 let answered  = false;
 let retryMode = false;
+let wrongBookMode = false;
 
 // ── MEMORY SYSTEM ──
 const MEM_KEY = 'quiz_seen_ids';
@@ -405,12 +456,118 @@ function incUsage(field, delta){
 function updateUsageUI(){
   const u = getUsage();
   const fmt = n => n>=10000 ? (n/10000).toFixed(1)+'萬' : (n||0).toLocaleString();
-  const el1 = document.getElementById('cnt-sessions');
   const el2 = document.getElementById('cnt-questions');
   const el3 = document.getElementById('cnt-correct');
-  if(el1) el1.textContent = fmt(u.sessions||0);
   if(el2) el2.textContent = fmt(u.questions||0);
   if(el3) el3.textContent = fmt(u.correct||0);
+}
+
+// ── 錯題本（永久記錄，僅手動清除）──
+const WRONG_KEY = 'quiz_wrong_book';
+let QID_MAP = null;
+function qidMap(){
+  if(!QID_MAP){ QID_MAP = new Map(); ALL_Q.forEach(q=>QID_MAP.set(makeQid(q), q)); }
+  return QID_MAP;
+}
+function getWrongBook(){
+  try{ return JSON.parse(localStorage.getItem(WRONG_KEY)||'{}'); }catch(e){ return {}; }
+}
+function saveWrongBook(b){ try{ localStorage.setItem(WRONG_KEY, JSON.stringify(b)); }catch(e){} }
+function addWrong(q){
+  const b = getWrongBook();
+  const id = makeQid(q);
+  const rec = b[id] || {n:0};
+  rec.n += 1;
+  rec.t = Date.now();
+  b[id] = rec;
+  saveWrongBook(b);
+}
+function wrongBookQuestions(){
+  const b = getWrongBook();
+  const m = qidMap();
+  return Object.keys(b).map(id=>m.get(id)).filter(Boolean);
+}
+function updateWrongUI(){
+  const qs = wrongBookQuestions();
+  const cnt = document.getElementById('wb-count');
+  if(cnt) cnt.textContent = qs.length;
+  const btn = document.getElementById('btn-wb-start');
+  if(btn) btn.disabled = qs.length===0;
+}
+function startWrongPractice(){
+  const qs = wrongBookQuestions();
+  if(qs.length===0){ alert('目前沒有錯題紀錄。'); return; }
+  retryMode = false;
+  wrongBookMode = true;
+  pool = shuffle(qs);
+  initQuiz();
+}
+
+// ── 紀錄匯出 / 匯入 / 雲端同步 ──
+function collectSyncData(){
+  return { seen: [...getSeenIds()], wrong: getWrongBook(), usage: getUsage(), ts: Date.now() };
+}
+function applySyncData(d, merge){
+  if(!d || typeof d !== 'object') return;
+  if(Array.isArray(d.seen)){
+    const s = merge ? getSeenIds() : new Set();
+    d.seen.forEach(id=>s.add(id));
+    saveSeenIds(s);
+  }
+  if(d.wrong && typeof d.wrong === 'object'){
+    const b = merge ? getWrongBook() : {};
+    Object.keys(d.wrong).forEach(id=>{
+      const inc = d.wrong[id] || {};
+      const cur = b[id];
+      b[id] = {
+        n: Math.max(inc.n||1, cur ? (cur.n||0) : 0),
+        t: Math.max(inc.t||0, cur ? (cur.t||0) : 0)
+      };
+    });
+    saveWrongBook(b);
+  }
+  updateMemUI(); updateWrongUI(); updateUsageUI();
+}
+function exportData(){
+  const blob = new Blob([JSON.stringify(collectSyncData())], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '採購法測驗紀錄_' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 5000);
+}
+const GAS_URL_KEY = 'quiz_gas_url', SYNC_CODE_KEY = 'quiz_sync_code';
+function gasUrl(){ return localStorage.getItem(GAS_URL_KEY)||''; }
+function syncCode(){ return localStorage.getItem(SYNC_CODE_KEY)||''; }
+function setSyncStatus(s){ const el = document.getElementById('sync-status'); if(el) el.textContent = s; }
+async function cloudUpload(silent){
+  const url = gasUrl(), code = syncCode();
+  if(!url || !code){ if(!silent) alert('請先在「雲端同步設定」填寫網址與個人代碼並儲存。'); return; }
+  setSyncStatus('☁️ 上傳中…');
+  try{
+    const r = await fetch(url, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({code: code, data: collectSyncData()})
+    });
+    const j = await r.json();
+    if(j && j.ok) setSyncStatus('✅ 已上傳雲端（' + new Date().toLocaleTimeString() + '）');
+    else throw new Error((j && j.error) || '回應異常');
+  }catch(e){ setSyncStatus('⚠️ 上傳失敗：' + e.message); }
+}
+async function cloudDownload(){
+  const url = gasUrl(), code = syncCode();
+  if(!url || !code){ alert('請先在「雲端同步設定」填寫網址與個人代碼並儲存。'); return; }
+  setSyncStatus('☁️ 下載中…');
+  try{
+    const r = await fetch(url + (url.indexOf('?')>=0?'&':'?') + 'code=' + encodeURIComponent(code));
+    const j = await r.json();
+    if(j && j.data){
+      applySyncData(j.data, true);
+      setSyncStatus('✅ 已合併雲端資料（錯題本共 ' + wrongBookQuestions().length + ' 題）');
+    } else setSyncStatus('ℹ️ 雲端尚無此代碼的資料');
+  }catch(e){ setSyncStatus('⚠️ 下載失敗：' + e.message); }
 }
 
 const MEM_MODE_KEY = 'quiz_mem_mode';
@@ -492,6 +649,69 @@ document.addEventListener('DOMContentLoaded', function(){
       alert('記憶已清除！');
     }
   });
+});
+
+// ── 錯題本 / 同步 事件繫結 ──
+document.addEventListener('DOMContentLoaded', function(){
+  updateWrongUI();
+  const wbStart = document.getElementById('btn-wb-start');
+  if(wbStart) wbStart.addEventListener('pointerdown', function(e){ e.preventDefault(); startWrongPractice(); });
+  const wbClear = document.getElementById('btn-wb-clear');
+  if(wbClear) wbClear.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    const n = wrongBookQuestions().length;
+    if(n===0){ alert('錯題本目前是空的。'); return; }
+    if(confirm('確定要清除錯題本？（共 ' + n + ' 題，清除後無法復原）')){
+      localStorage.removeItem(WRONG_KEY);
+      updateWrongUI();
+      alert('錯題本已清除！');
+    }
+  });
+  const exBtn = document.getElementById('btn-export');
+  if(exBtn) exBtn.addEventListener('pointerdown', function(e){ e.preventDefault(); exportData(); });
+  const imBtn = document.getElementById('btn-import');
+  if(imBtn) imBtn.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    document.getElementById('import-file').click();
+  });
+  const imFile = document.getElementById('import-file');
+  if(imFile) imFile.addEventListener('change', function(){
+    const f = this.files && this.files[0];
+    if(!f) return;
+    const rd = new FileReader();
+    rd.onload = function(){
+      try{
+        applySyncData(JSON.parse(rd.result), true);
+        alert('匯入完成！已與本機紀錄合併。\n錯題本目前共 ' + wrongBookQuestions().length + ' 題。');
+      }catch(err){ alert('匯入失敗：檔案格式不正確。'); }
+    };
+    rd.readAsText(f);
+    this.value = '';
+  });
+  const tg = document.getElementById('sync-toggle');
+  if(tg) tg.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    const p = document.getElementById('sync-panel');
+    const open = p.style.display === 'none';
+    p.style.display = open ? 'block' : 'none';
+    this.textContent = open ? '☁️ 雲端同步設定 ▴' : '☁️ 雲端同步設定 ▾';
+  });
+  const urlEl = document.getElementById('gas-url');
+  const codeEl = document.getElementById('sync-code');
+  if(urlEl) urlEl.value = gasUrl();
+  if(codeEl) codeEl.value = syncCode();
+  if(gasUrl() && syncCode()) setSyncStatus('已設定雲端同步；每次測驗結束會自動上傳');
+  const sv = document.getElementById('btn-sync-save');
+  if(sv) sv.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    localStorage.setItem(GAS_URL_KEY, urlEl.value.trim());
+    localStorage.setItem(SYNC_CODE_KEY, codeEl.value.trim());
+    setSyncStatus(gasUrl() && syncCode() ? '✅ 設定已儲存' : 'ℹ️ 設定已清空');
+  });
+  const up = document.getElementById('btn-cloud-up');
+  if(up) up.addEventListener('pointerdown', function(e){ e.preventDefault(); cloudUpload(false); });
+  const dn = document.getElementById('btn-cloud-down');
+  if(dn) dn.addEventListener('pointerdown', function(e){ e.preventDefault(); cloudDownload(); });
 });
 
 
@@ -616,7 +836,7 @@ $('btn-start').addEventListener('pointerdown', function(e){
 });
 function startQuiz(){
   retryMode = false;
-  incUsage('sessions',1); updateUsageUI();
+  wrongBookMode = false;
   let p = selCat==='all' ? [...ALL_Q] : ALL_Q.filter(q=>q.category===selCat);
   if(selType!=='all') p = p.filter(q=>q.type===selType);
   if(p.length===0){ alert('該條件下沒有題目，請重新選擇。'); return; }
@@ -630,7 +850,9 @@ function startQuiz(){
 }
 function initQuiz(){
   idx=0; correct=0; wrongs=[]; answered=false;
-  $('retry-banner').style.display = retryMode?'block':'none';
+  const rbn = $('retry-banner');
+  rbn.style.display = (retryMode||wrongBookMode)?'block':'none';
+  rbn.textContent = wrongBookMode ? '📕 錯題本練習模式' : '🔄 錯題重練模式';
   show('s-quiz');
   renderQ();
 }
@@ -689,6 +911,7 @@ function pickAnswer(chosen){
     fb.textContent = '✓ 答對了！'+(q.law_ref?'（依據：'+q.law_ref+'）':'');
   } else {
     wrongs.push({q, chosen});
+    addWrong(q);
     fb.className = 'feedback ng';
     const co = q.options[q.answer];
     const lawRef = q.law_ref || '';
@@ -722,6 +945,8 @@ function showResult(){
   incUsage('questions', pool.length);
   incUsage('correct', correct);
   updateUsageUI();
+  updateWrongUI();
+  if(gasUrl() && syncCode()) cloudUpload(true);
   show('s-result');
   const tot = pool.length;
   const pct = Math.round(correct/tot*100);
@@ -758,7 +983,7 @@ $('btn-home2').addEventListener('pointerdown',function(e){ e.preventDefault(); s
 $('btn-retry').addEventListener('pointerdown',function(e){
   e.preventDefault();
   if(wrongs.length===0) return;
-  retryMode=true;
+  retryMode=true; wrongBookMode=false;
   pool=shuffle(wrongs.map(w=>w.q));
   initQuiz();
 });
